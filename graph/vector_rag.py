@@ -4,25 +4,24 @@ import sys       # 프로그램 종료용
 import time      # 실행 시간 측정용
 from pathlib import Path  # 파일 경로 존재 여부 확인용
 
+# vector_services에서 PDF 파서, 시맨틱 청커, 임베더 클래스를 임포트
+from .vector_services import VehiclePDFParser, SemanticChunker, VehicleEmbedder
+
 # 로깅 기본 설정
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-class VehicleRAG:
+class VectorRAG:
     def __init__(self, model_name: str = "MiniLM"):
         """
         초기화 메서드. 추후 bge-m3 등 다른 임베딩 모델로 쉽게 교체할 수 있도록 설계
         """
         self.model_name = model_name
-        logging.info(f"VehicleRAG 초기화 완료 (Embedding Model: {self.model_name})")
+        logging.info(f"VectorRAG 초기화(Embedding Model: {self.model_name})")
 
     def run_chunk(self, pdf_path: str):
         """
         PDF 파싱 및 Semantic Chunking 수행
         """
-        # 클래스 레벨 임포트 대신 메서드 내 임포트를 유지 (필요에 따라 모듈 최상단으로 이동 가능)
-        from pdf_parser import VehiclePDFParser
-        from semantic_chunker import SemanticChunker
-        
         # 파일 존재 여부 검증 (방어적 코드)
         if not Path(pdf_path).exists():
             logging.error(f"지정된 PDF 파일을 찾을 수 없습니다: {pdf_path}")
@@ -54,8 +53,6 @@ class VehicleRAG:
         """
         청킹 결과 임베딩 및 Vector Store 저장
         """
-        from embedder import VehicleEmbedder
-
         # self를 통해 내부 메서드 호출 (스코프 수정)
         chunks, chunker = self.run_chunk(pdf_path)
 
@@ -66,7 +63,7 @@ class VehicleRAG:
         logging.info("임베딩 및 Vector Store 저장 시작")
         t0 = time.time()
         embedder = VehicleEmbedder(embeddings=chunker._embeddings)
-        VehicleEmbedder.embed_and_store(embedder, chunks)
+        embedder.embed_and_store(chunks)
         logging.info(f"임베딩 및 저장 완료 (소요시간: {time.time() - t0:.2f}초)")
 
 
@@ -89,7 +86,7 @@ def main():
     args = parser.parse_args()
 
     # 인스턴스 생성 시 모델명 주입
-    rag_pipeline = VehicleRAG(model_name=args.model)
+    rag_pipeline = VectorRAG(model_name=args.model)
 
     if args.step == "chunk":
         chunks, _ = rag_pipeline.run_chunk(args.pdf_path)
