@@ -23,9 +23,11 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as qmodels
+from services.few_shots_examples import few_shot_examples
+
 
 # 내부 애플리케이션 임포트
-from app.core.config import (
+from core.config import (
     MODEL_NAME,
     VECTOR_SIZE,
     QDRANT_PATH,
@@ -296,3 +298,29 @@ class VehicleEmbedder:
             )
 
         logger.info("Qdrant 컬렉션 생성: %s", COLLECTION_NAME)
+
+def store_few_shot_examples(examples: list[dict]) -> None:
+    """
+    Few-shot 예시를 Qdrant에 저장한다.
+    """
+    documents = []
+    for ex in examples:
+        # 질문 위주로 검색되도록 page_content 구성
+        content = f"Question: {ex.get('question', '')}\nIntent: {ex.get('intent', '')}"
+        
+        doc = Document(
+            page_content=content,
+            metadata={
+                "category": ex.get("category", ""),
+                "question": ex.get("question", ""),
+                "sql": ex.get("sql", ""),
+                "intent": ex.get("intent", ""),
+                "source": "few_shots_examples"
+            }
+        )
+        documents.append(doc)
+        
+    embedder = VehicleEmbedder()
+    embedder.embed_and_store(documents)
+    logger.info("Few-shot 예시 %d개 Qdrant 저장 완료", len(documents))
+    

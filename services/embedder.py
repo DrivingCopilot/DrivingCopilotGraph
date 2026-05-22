@@ -64,7 +64,7 @@ class VehicleEmbedder:
         self._vectorstore = QdrantVectorStore(
             client=self._client,
             collection_name=COLLECTION_NAME,
-            embedding=self._embeddings,  # embeddings → embedding 주의
+            embedding=self._embeddings,  
         )
 
     # ------------------------------------------------------------------
