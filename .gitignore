@@ -1,0 +1,31 @@
+.venv/
+venv/
+ENV/
+
+
+__pycache__/
+*.py[cod]
+*$py.class
+
+
+.env
+.idea/
+
+
+*.log
+data/raw/           # Python
+__pycache__/
+*.pyc
+*.pyo
+
+
+# Qdrant_storage/ — 런타임 임시 파일
+qdrant_storage/
+**/.lock
+
+# Neo4j 컨테이너 데이터/로그 (docker-compose 볼륨)
+neo4j/
+
+# 개발자 개인 에디터 설정
+.vscode  
+
