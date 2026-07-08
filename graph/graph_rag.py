@@ -1,4 +1,3 @@
-import os
 import asyncio
 import logging
 from typing import TypedDict, Any, List, Dict, Optional
@@ -9,11 +8,10 @@ from neo4j_graphrag.experimental.components.schema import SchemaBuilder
 from neo4j_graphrag.experimental.pipeline import Pipeline
 from neo4j_graphrag.experimental.components.entity_relation_extractor import LLMEntityRelationExtractor
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import BaseMessage
 from pydantic import BaseModel, Field
-from app.agent.state import AgentState
 
-from app.graph.schema import DrivingGraphSchema
+from core import config
+from graph.schema import DrivingGraphSchema
 
 logger = logging.getLogger(__name__)
 
@@ -51,10 +49,10 @@ class VehicleGraphManager:
     Can be used as a LangGraph Node ('Knowledge Agent') or registered as an MCP Tool.
     """
     def __init__(self):
-        self.uri = os.getenv("NEO4J_URI", "bolt://localhost:7687")
-        self.user = os.getenv("NEO4J_USER", "neo4j")
-        self.password = os.getenv("NEO4J_PASSWORD", "password")
-        self.database = os.getenv("NEO4J_DATABASE", "neo4j")
+        self.uri = config.NEO4J_URI
+        self.user = config.NEO4J_USER
+        self.password = config.NEO4J_PASSWORD
+        self.database = config.NEO4J_DATABASE
         
         # Async Driver setup for non-blocking I/O
         self.driver = AsyncGraphDatabase.driver(
@@ -147,13 +145,17 @@ Extract entities and relationships from the following vehicle diagnostic text st
         RETURN n.name AS source_name, labels(n) AS source_labels,
                [rel IN relationships(p) | type(rel)] AS rel_types,
                m.name AS target_name, labels(m) AS target_labels
-        LIMIT 20
+        LIMIT $limit
         """
-        
+
         try:
             # 비동기 세션을 열고 쿼리 실행
-            async with self.driver.session() as session:
-                result = await session.run(cypher_query, entity_names=entity_names)
+            async with self.driver.session(database=self.database) as session:
+                result = await session.run(
+                    cypher_query,
+                    entity_names=entity_names,
+                    limit=config.GRAPH_MAX_RESULTS,
+                )
                 records = await result.data()
 
             if not records:

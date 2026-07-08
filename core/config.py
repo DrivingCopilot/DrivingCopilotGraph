@@ -46,3 +46,14 @@ ALLOWED_ORIGINS = [
     "http://localhost:3000",   # React frontend
     "http://localhost:8000",   # FastAPI backend (server-to-server 호출용)
 ]
+
+# ---------------------------------------------------------------------------
+# Neo4j (Graph RAG)
+# ---------------------------------------------------------------------------
+# DrivingCopilotBackend app/config.py 와 동일한 키를 사용한다.
+# (주의: Agent 레포는 NEO4J_USERNAME 을 쓰지만, 여기·Backend는 NEO4J_USER 로 통일)
+NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")
+NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
+NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "password")   # 로컬 개발 기본값
+NEO4J_DATABASE = os.getenv("NEO4J_DATABASE", "neo4j")
+GRAPH_MAX_RESULTS = int(os.getenv("GRAPH_MAX_RESULTS", "20"))  # 그래프 탐색 결과 상한

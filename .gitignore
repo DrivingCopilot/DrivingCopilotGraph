@@ -23,6 +23,9 @@ __pycache__/
 qdrant_storage/
 **/.lock
 
+# Neo4j 컨테이너 데이터/로그 (docker-compose 볼륨)
+neo4j/
+
 # 개발자 개인 에디터 설정
 .vscode  
 
