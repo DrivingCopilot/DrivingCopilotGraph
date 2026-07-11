@@ -3,11 +3,16 @@ import logging
 from typing import TypedDict, Any, List, Dict, Optional
 
 from tenacity import retry, stop_after_attempt, wait_exponential
-from neo4j import AsyncGraphDatabase
+from neo4j import AsyncGraphDatabase, GraphDatabase
 from neo4j_graphrag.experimental.components.schema import SchemaBuilder
-from neo4j_graphrag.experimental.pipeline import Pipeline
 from neo4j_graphrag.experimental.components.entity_relation_extractor import LLMEntityRelationExtractor
-from langchain_core.language_models.chat_models import BaseChatModel
+from neo4j_graphrag.experimental.components.kg_writer import Neo4jWriter
+from neo4j_graphrag.experimental.components.types import (
+    TextChunk,
+    TextChunks,
+    DocumentInfo,
+)
+from neo4j_graphrag.llm import OllamaLLM
 from pydantic import BaseModel, Field
 
 from core import config
@@ -15,20 +20,24 @@ from graph.schema import DrivingGraphSchema
 
 logger = logging.getLogger(__name__)
 
-# --- 1. Abstracted Local LLM Interface ---
-class LocalQwen2VL(BaseChatModel):
-    model_name: str = "qwen2-vl-1.5b-instruct-int4"
-    
-    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
-        raise NotImplementedError("Requires local TensorRT-LLM binding implementation")
-        
-    async def _agenerate(self, messages, stop=None, run_manager=None, **kwargs):
-        # Implementation for invoking local TensorRT-LLM asynchronously goes here
-        raise NotImplementedError("Requires local TensorRT-LLM binding implementation")
-        
-    @property
-    def _llm_type(self) -> str:
-        return "local-qwen2-vl-1.5b-executor"
+
+# --- 1. Local LLM (Ollama / Qwen3-VL) --------------------------------------
+def build_local_llm() -> OllamaLLM:
+    """
+    로컬 Ollama 서버(qwen3-vl:4b)에 연결된 LLM 인스턴스를 생성한다.
+
+    neo4j_graphrag.llm.OllamaLLM 은 LLMInterface 를 구현하므로
+    - LLMEntityRelationExtractor(llm=...) 에 그대로 주입 가능하고
+    - invoke/ainvoke → LLMResponse(.content) 형태로 응답한다.
+
+    사전 준비: scripts/02_setup_llm.sh 로 Ollama 서버 + 모델 pull 완료 필요.
+    """
+    return OllamaLLM(
+        model_name=config.GRAPH_LLM_MODEL,
+        # options 키로 감싸야 ollama chat(options=...) 로 전달된다(래퍼 규약).
+        model_params={"options": {"temperature": config.GRAPH_LLM_TEMPERATURE}},
+        host=config.OLLAMA_HOST,
+    )
 
 
 # --- 3. MCP Tool Interface (Input/Output Schemas) ---
@@ -54,67 +63,99 @@ class VehicleGraphManager:
         self.password = config.NEO4J_PASSWORD
         self.database = config.NEO4J_DATABASE
         
-        # Async Driver setup for non-blocking I/O
+        # Async Driver: 비동기 그래프 탐색(retrieve_context)용
         self.driver = AsyncGraphDatabase.driver(
-            self.uri, 
+            self.uri,
             auth=(self.user, self.password)
         )
-        
+        # Sync Driver: Neo4jWriter 는 내부적으로 동기 execute_query 를 호출하므로 별도 필요
+        self.sync_driver = GraphDatabase.driver(
+            self.uri,
+            auth=(self.user, self.password),
+        )
+
         # Build Schema Pipeline
-        self.schema_builder = SchemaBuilder(
-            node_types=DrivingGraphSchema.get_node_types(),
-            relationship_types=DrivingGraphSchema.get_relationship_types(),
-            patterns=DrivingGraphSchema.get_patterns()
-        )
+        # neo4j_graphrag>=1.18: SchemaBuilder 는 인자 없이 생성하고,
+        # node/relationship/pattern 은 run() 시점에 전달한다.
+        self.schema_builder = SchemaBuilder()
 
-        # 프롬프트 템플릿에 {schema} 변수 추가
-        extraction_prompt = """
-You are a top-tier automotive data extraction expert.
-Extract entities and relationships from the following vehicle diagnostic text strictly based on the provided schema.
+        # 로컬 Ollama LLM (Qwen3-VL) — 추출/융합에서 공유
+        self.llm = build_local_llm()
 
-[ALLOWED SCHEMA]
-{schema}
-
-[TEXT TO EXTRACT]
-{text}
-"""
-
-        # LLM Extractor using the abstracted Local LLM
+        # LLM Extractor — 기본 ERExtractionTemplate 사용(JSON 출력 포맷 지시 포함).
+        # 커스텀 프롬프트는 JSON 포맷 명세가 없어 구조화 추출이 실패하므로 사용하지 않는다.
         self.extractor = LLMEntityRelationExtractor(
-            llm=LocalQwen2VL(),
-            prompt_template=extraction_prompt,
-            create_lexical_graph=True
+            llm=self.llm,
+            create_lexical_graph=True,
         )
+
+        # Neo4j 적재기 — clean_db=False 로 증분 적재(매 호출 시 DB 초기화 방지)
+        self.writer = Neo4jWriter(
+            self.sync_driver,
+            neo4j_database=self.database,
+            clean_db=False,
+        )
+
+        # 병렬 적재 지원:
+        #  - _graph_schema : 스키마는 불변이므로 최초 1회만 빌드해 재사용(청크마다 재빌드 방지)
+        #  - _write_lock   : 여러 청크가 같은 Document/Chunk 노드를 동시에 MERGE 하면
+        #                    Neo4j 데드락이 나므로, 추출은 병렬로 두되 쓰기만 직렬화한다.
+        self._graph_schema = None
+        self._write_lock = asyncio.Lock()
 
     async def close(self):
-        """Close the async Neo4j driver connection."""
+        """Close both Neo4j driver connections."""
         await self.driver.close()
+        self.sync_driver.close()
 
     @retry(
         stop=stop_after_attempt(3), # Initial try + 2 retries = 3 attempts total
         wait=wait_exponential(multiplier=1, min=2, max=10),
         reraise=True
     )
-    async def extracting_data(self, text: str) -> dict:
+    async def extracting_data(
+        self,
+        text: str,
+        document_info: Optional[DocumentInfo] = None,
+        store: bool = True,
+    ) -> dict:
         """
-        Async extraction of entities and relationships, and storage to Neo4j.
-        Includes failure handling with tenacity (max 2 retries).
+        차량 진단 텍스트에서 엔티티/관계를 추출하고(store=True 시) Neo4j 에 적재한다.
+
+        Args:
+            text: 추출 대상 텍스트(예: 매뉴얼 청크 page_content).
+            document_info: 출처 메타데이터(source/파일명 등). 지정 시 Document 노드로 기록.
+            store: True 면 추출 결과를 Neo4j 에 적재. False 면 추출만 수행.
+
+        Tenacity 로 최대 2회 재시도한다.
         """
         try:
-            # 1. SchemaBuilder를 실행하여 텍스트 형태의 스키마를 가져옴
-            schema_info = await asyncio.to_thread(self.schema_builder.run)
-            schema_text = schema_info.schema if hasattr(schema_info, 'schema') else str(schema_info)
+            # 1. GraphSchema 는 불변이므로 최초 1회만 빌드해 캐시(병렬 호출 시 이중 빌드는 무해).
+            if self._graph_schema is None:
+                self._graph_schema = await self.schema_builder.run(
+                    node_types=DrivingGraphSchema.get_node_types(),
+                    relationship_types=DrivingGraphSchema.get_relationship_types(),
+                    patterns=DrivingGraphSchema.get_patterns(),
+                )
+            graph_schema = self._graph_schema
 
-            # 2. 텍스트와 추출된 스키마 텍스트를 함께 전달하여 실행
-            extraction_result = await asyncio.to_thread(
-                self.extractor.run, 
-                text=text,
-                schema=schema_text
+            # 2. 입력 텍스트를 TextChunks 로 감싸 추출기에 전달 (LLM 추출 — 병렬 가능한 느린 구간)
+            chunks = TextChunks(chunks=[TextChunk(index=0, text=text)])
+            graph = await self.extractor.run(
+                chunks=chunks,
+                schema=graph_schema,
+                document_info=document_info,
             )
+
+            # 3. Neo4j 적재 (Neo4jWriter.run 은 async 컴포넌트)
+            #    같은 Document/Chunk 노드 동시 MERGE 로 인한 데드락 방지를 위해 쓰기는 직렬화.
+            if store:
+                async with self._write_lock:
+                    await self.writer.run(graph)
 
             return {
                 "success": True,
-                "data": getattr(extraction_result, "dict", lambda: extraction_result)()
+                "data": graph.model_dump() if hasattr(graph, "model_dump") else graph,
             }
         except Exception as e:
             logger.error(f"Failed to extract and store graph data: {e}")
@@ -203,10 +244,8 @@ If there is a conflict, prioritize the structural facts from the Graph DB, but e
 Please provide the synthesized diagnostic context.
 """
         try:
-            llm = LocalQwen2VL()
-            # 비동기 호출을 통해 LLM 텍스트 생성
-            response = await llm.ainvoke(fusion_prompt)
-            # LangChain BaseMessage 형태 반환 시 content 추출
+            # 비동기 호출을 통해 LLM 텍스트 생성 (LLMResponse.content 반환)
+            response = await self.llm.ainvoke(fusion_prompt)
             return response.content if hasattr(response, 'content') else str(response)
         except Exception as e:
             logger.error(f"Context fusion failed: {e}")

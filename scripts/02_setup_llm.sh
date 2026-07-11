@@ -1,20 +1,26 @@
 #!/usr/bin/env bash
 # 02_setup_llm.sh
 # -----------------------------------------------------------------------------
-# Graph RAG 엔티티/관계 추출에 사용할 로컬 LLM(Qwen2-VL-7B INT4/AWQ) 환경을 구성한다.
+# Graph RAG 엔티티/관계 추출에 사용할 로컬 LLM(Qwen3-VL-4B) 환경을 Ollama 로 구성한다.
 #
-# 대상: GPU 워크스테이션(별도 로컬 환경). 이 스크립트는 특정 머신에 종속되지 않으며,
-#       CUDA 가 준비된 환경에서 실행하는 것을 전제로 한다.
+# 구성 원칙:
+#   - Ollama 서버/모델 : 네이티브 바이너리이므로 사용자 공간(~/.local)에 설치(sudo 불필요)
+#   - Python 의존성     : 반드시 프로젝트 가상환경(.venv) 안에서만 설치
+#
+# 대상: GPU 워크스테이션(RTX 4060 Ti 8GB 등). qwen3-vl:4b 는 약 3.3GB(Q4)로
+#       8GB VRAM 에서 비전 인코더/KV 캐시 포함 여유 있게 동작한다.
 #
 # 수행 내용:
-#   1) Python 가상환경(.venv) 생성
-#   2) 추론/그래프 의존성 설치 (torch, transformers, autoawq, neo4j-graphrag 등)
-#   3) LLM 가중치 다운로드 (기본: Qwen/Qwen2-VL-7B-Instruct-AWQ)
+#   1) Python 가상환경(.venv) 생성 + `ollama` 파이썬 클라이언트 설치
+#   2) Ollama 서버 바이너리를 ~/.local 에 설치(없을 때만)
+#   3) Ollama 서버 기동(백그라운드) 후 모델 pull
 #
 # 환경 변수(선택):
-#   LLM_MODEL   내려받을 HF 모델 ID (기본 Qwen/Qwen2-VL-7B-Instruct-AWQ)
-#   VENV_DIR    가상환경 경로       (기본 .venv)
-#   SKIP_MODEL_DOWNLOAD=1  가중치 다운로드 건너뛰기(의존성만 설치)
+#   LLM_MODEL     내려받을 Ollama 모델 태그 (기본 qwen3-vl:4b)
+#   VENV_DIR      가상환경 경로              (기본 .venv)
+#   OLLAMA_HOME   Ollama 설치 경로           (기본 $HOME/.local)
+#   OLLAMA_VERSION Ollama 릴리스 버전         (기본 v0.31.1)
+#   SKIP_MODEL_PULL=1  모델 pull 생략(서버/의존성만 구성)
 #
 # 사용법:  ./scripts/02_setup_llm.sh
 # -----------------------------------------------------------------------------
@@ -23,9 +29,12 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-LLM_MODEL="${LLM_MODEL:-Qwen/Qwen2-VL-7B-Instruct-AWQ}"
+LLM_MODEL="${LLM_MODEL:-qwen3-vl:4b}"
 VENV_DIR="${VENV_DIR:-.venv}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
+OLLAMA_HOME="${OLLAMA_HOME:-$HOME/.local}"
+OLLAMA_VERSION="${OLLAMA_VERSION:-v0.31.1}"
+OLLAMA_BIN="$OLLAMA_HOME/bin/ollama"
 
 # --- 0. 사전 점검 ----------------------------------------------------------
 echo "[0/3] 환경 점검"
@@ -36,57 +45,76 @@ fi
 if command -v nvidia-smi >/dev/null 2>&1; then
   nvidia-smi --query-gpu=name,memory.total --format=csv,noheader || true
 else
-  echo "   경고: nvidia-smi 미검출. GPU/CUDA 환경에서 실행하는지 확인하세요."
+  echo "   경고: nvidia-smi 미검출. GPU/CUDA 환경에서 실행하는지 확인하세요(CPU 추론은 느림)."
 fi
 
-# --- 1. 가상환경 ----------------------------------------------------------
+# --- 1. 가상환경 + 파이썬 클라이언트 --------------------------------------
 echo "[1/3] 가상환경 준비: $VENV_DIR"
 if [[ ! -d "$VENV_DIR" ]]; then
   "$PYTHON_BIN" -m venv "$VENV_DIR"
 fi
 # shellcheck disable=SC1091
 source "$VENV_DIR/bin/activate"
-python -m pip install --upgrade pip wheel setuptools
+python -m pip install --upgrade pip wheel setuptools >/dev/null
+# Graph RAG 파이프라인 의존성:
+#   - ollama         : Ollama 서버 호출 파이썬 클라이언트
+#   - neo4j-graphrag : OllamaLLM / SchemaBuilder / LLMEntityRelationExtractor / Neo4jWriter
+python -m pip install "ollama>=0.4" "neo4j-graphrag>=1.18"
 
-# --- 2. 의존성 설치 -------------------------------------------------------
-echo "[2/3] 의존성 설치"
-# 프로젝트 공통 의존성
-python -m pip install -r requirements.txt
+# --- 2. Ollama 서버(사용자 공간 설치) -------------------------------------
+echo "[2/3] Ollama 서버 확인: $OLLAMA_BIN"
+if [[ ! -x "$OLLAMA_BIN" ]]; then
+  echo "   Ollama 미설치 → $OLLAMA_HOME 에 설치($OLLAMA_VERSION)"
+  TARBALL="/tmp/ollama-linux-amd64.tar.zst"
+  URL="https://github.com/ollama/ollama/releases/download/${OLLAMA_VERSION}/ollama-linux-amd64.tar.zst"
+  curl -L --fail --progress-bar "$URL" -o "$TARBALL"
+  mkdir -p "$OLLAMA_HOME"
+  if command -v zstd >/dev/null 2>&1; then
+    tar --use-compress-program=unzstd -C "$OLLAMA_HOME" -xf "$TARBALL"
+  else
+    # tar 가 zstd 를 직접 지원하는 최신 버전인 경우
+    tar -C "$OLLAMA_HOME" -xf "$TARBALL"
+  fi
+  rm -f "$TARBALL"
+fi
+"$OLLAMA_BIN" --version >/dev/null 2>&1 || true
+echo "   설치 경로: $OLLAMA_BIN"
+echo "   PATH 추가 권장: export PATH=\"$OLLAMA_HOME/bin:\$PATH\""
 
-# LLM(Qwen2-VL AWQ) 추론 + Graph RAG 파이프라인 의존성
-#   - torch          : PyTorch (CUDA 휠은 실행 환경의 CUDA 버전에 맞게 자동 선택)
-#   - transformers   : Qwen2-VL 지원 (>=4.45)
-#   - accelerate     : 디바이스 매핑/오프로드
-#   - autoawq        : AWQ(INT4) 양자화 가중치 로드
-#   - qwen-vl-utils  : Qwen2-VL 전처리 유틸
-#   - neo4j-graphrag : LLMEntityRelationExtractor / SchemaBuilder (graph/ 에서 사용)
-#   - huggingface_hub: 모델 다운로드 CLI
-python -m pip install \
-  "torch" \
-  "transformers>=4.45.0" \
-  "accelerate>=0.34.0" \
-  "autoawq" \
-  "qwen-vl-utils" \
-  "neo4j-graphrag" \
-  "huggingface_hub[cli]"
-
-# --- 3. 모델 다운로드 -----------------------------------------------------
-if [[ "${SKIP_MODEL_DOWNLOAD:-0}" == "1" ]]; then
-  echo "[3/3] SKIP_MODEL_DOWNLOAD=1 → 가중치 다운로드 생략"
+# --- 3. 서버 기동 + 모델 pull ---------------------------------------------
+if [[ "${SKIP_MODEL_PULL:-0}" == "1" ]]; then
+  echo "[3/3] SKIP_MODEL_PULL=1 → 모델 pull 생략"
 else
-  echo "[3/3] LLM 가중치 다운로드: $LLM_MODEL"
-  # 게이트/사설 모델이면 먼저 'huggingface-cli login' 필요
-  huggingface-cli download "$LLM_MODEL" --local-dir "models/$(basename "$LLM_MODEL")"
+  echo "[3/3] Ollama 서버 기동 및 모델 pull: $LLM_MODEL"
+  # 이미 떠 있으면 재사용, 아니면 백그라운드로 기동
+  if ! curl -fsS http://127.0.0.1:11434/api/version >/dev/null 2>&1; then
+    echo "   서버 기동(백그라운드): ollama serve"
+    OLLAMA_LOG="$ROOT_DIR/logs/ollama.log"
+    mkdir -p "$ROOT_DIR/logs"
+    nohup "$OLLAMA_BIN" serve >"$OLLAMA_LOG" 2>&1 &
+    # 준비 대기(최대 30초)
+    for _ in $(seq 1 30); do
+      curl -fsS http://127.0.0.1:11434/api/version >/dev/null 2>&1 && break
+      sleep 1
+    done
+  fi
+  "$OLLAMA_BIN" pull "$LLM_MODEL"
 fi
 
 cat <<EOF
 
 ✅ LLM 환경 구성 완료
-   - venv    : $VENV_DIR   (활성화: source $VENV_DIR/bin/activate)
-   - model   : $LLM_MODEL  → models/$(basename "$LLM_MODEL")
+   - venv     : $VENV_DIR   (활성화: source $VENV_DIR/bin/activate)
+   - ollama   : $OLLAMA_BIN
+   - model    : $LLM_MODEL
 
-다음 단계:
-   1) graph/graph_rag.py 의 LocalQwen2VL._agenerate 에 실제 추론 바인딩 구현
-      (models/$(basename "$LLM_MODEL") 로드 → generate)
-   2) 적재 실행: ./scripts/03_ingest.sh <입력.txt 또는 디렉터리>
+빠른 확인:
+   export PATH="$OLLAMA_HOME/bin:\$PATH"
+   ollama list
+   ollama run $LLM_MODEL "안녕, 너는 이미지를 볼 수 있니?"
+
+파이썬에서 사용:
+   from ollama import Client
+   c = Client()  # http://127.0.0.1:11434
+   print(c.chat("$LLM_MODEL", messages=[{"role":"user","content":"테스트"}]))
 EOF
