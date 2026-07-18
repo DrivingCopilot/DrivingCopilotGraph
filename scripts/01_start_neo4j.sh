@@ -64,7 +64,7 @@ docker exec "$CONTAINER" cypher-shell -u neo4j -p "$NEO4J_PASSWORD" \
 
 cat <<EOF
 
-✅ Neo4j 준비 완료
+Neo4j 준비 완료
    - Browser : http://localhost:7474   (neo4j / $NEO4J_PASSWORD)
    - Bolt    : bolt://localhost:7687
    - 데이터   : ./neo4j/data (영속화)

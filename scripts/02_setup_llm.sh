@@ -103,7 +103,7 @@ fi
 
 cat <<EOF
 
-✅ LLM 환경 구성 완료
+LLM 환경 구성 완료
    - venv     : $VENV_DIR   (활성화: source $VENV_DIR/bin/activate)
    - ollama   : $OLLAMA_BIN
    - model    : $LLM_MODEL
