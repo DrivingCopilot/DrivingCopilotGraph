@@ -10,7 +10,7 @@ A6000 서버 통합 시 qdrant_path → qdrant_url로 전환.
 
 from __future__ import annotations  # Python 3.9 이하에서도 타입 힌트가 동작하도록 함
 
-from app.core.config import (  # 전역 설정 상수 import
+from core.config import (  # 전역 설정 상수 import
     MODEL_NAME,
     VECTOR_SIZE,
     QDRANT_PATH,

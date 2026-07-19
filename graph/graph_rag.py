@@ -260,7 +260,9 @@ Please provide the synthesized diagnostic context.
             result = await self.extracting_data(input_data.text)
             ext_data = result.get("data", {})
             
-            entities = ext_data.get("entities", []) if isinstance(ext_data, dict) else []
+            # extracting_data 는 graph.model_dump() 을 반환하며 키는 nodes/relationships 다
+            # (graph/ingest.py 도 data.get("nodes") 를 사용). "entities" 로 읽으면 항상 빈 값이 된다.
+            entities = ext_data.get("nodes", []) if isinstance(ext_data, dict) else []
             relationships = ext_data.get("relationships", []) if isinstance(ext_data, dict) else []
             
             # 2. 방금 추출된 Entity를 단서로 Neo4j 그래프 탐색 (1~2 hop)

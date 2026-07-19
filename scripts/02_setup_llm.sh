@@ -16,7 +16,7 @@
 #   3) Ollama 서버 기동(백그라운드) 후 모델 pull
 #
 # 환경 변수(선택):
-#   LLM_MODEL     내려받을 Ollama 모델 태그 (기본 qwen3-vl:4b)
+#   LLM_MODEL     내려받을 Ollama 모델 태그 (기본 qwen3-vl:4b-instruct)
 #   VENV_DIR      가상환경 경로              (기본 .venv)
 #   OLLAMA_HOME   Ollama 설치 경로           (기본 $HOME/.local)
 #   OLLAMA_VERSION Ollama 릴리스 버전         (기본 v0.31.1)
@@ -29,7 +29,9 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-LLM_MODEL="${LLM_MODEL:-qwen3-vl:4b}"
+# 구조화 추출 파이프라인(core/config.py GRAPH_LLM_MODEL)과 반드시 동일한 태그를 pull 해야 한다.
+# thinking 에디션(qwen3-vl:4b)은 장문 추론으로 빈 JSON 을 반환하므로 Instruct 를 사용한다.
+LLM_MODEL="${LLM_MODEL:-qwen3-vl:4b-instruct}"
 VENV_DIR="${VENV_DIR:-.venv}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 OLLAMA_HOME="${OLLAMA_HOME:-$HOME/.local}"
