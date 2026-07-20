@@ -57,3 +57,14 @@ NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
 NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "password")   # 로컬 개발 기본값
 NEO4J_DATABASE = os.getenv("NEO4J_DATABASE", "neo4j")
 GRAPH_MAX_RESULTS = int(os.getenv("GRAPH_MAX_RESULTS", "20"))  # 그래프 탐색 결과 상한
+
+# ---------------------------------------------------------------------------
+# 로컬 LLM (Ollama / Qwen3-VL)
+# ---------------------------------------------------------------------------
+# Graph RAG 엔티티/관계 추출 및 컨텍스트 융합에 사용하는 로컬 VLM.
+# scripts/02_setup_llm.sh 로 Ollama 서버 + qwen3-vl:4b 를 구성한다.
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434")
+# 구조화 추출에는 thinking 없는 Instruct 에디션을 사용한다.
+# (thinking 에디션 qwen3-vl:4b 는 장문의 추론으로 출력 토큰을 소진해 빈 JSON 을 반환함)
+GRAPH_LLM_MODEL = os.getenv("GRAPH_LLM_MODEL", "qwen3-vl:4b-instruct")
+GRAPH_LLM_TEMPERATURE = float(os.getenv("GRAPH_LLM_TEMPERATURE", "0.0"))  # 추출은 결정적으로

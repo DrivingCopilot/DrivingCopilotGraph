@@ -33,8 +33,8 @@ def run_chunk(pdf_path: str):
     파싱 + 청킹 결과를 확인한다. Qdrant 없이도 실행 가능.
     청크 품질 확인 후 임베딩으로 넘어가기 위한 중간 검증 단계.
     """
-    from pdf_parser import VehiclePDFParser      # PDF 파싱 클래스
-    from semantic_chunker import SemanticChunker  # 시맨틱 청킹 클래스
+    from services.pdf_parser import VehiclePDFParser      # PDF 파싱 클래스
+    from services.semantic_chunker import SemanticChunker  # 시맨틱 청킹 클래스
 
     # STEP 1: PDF 파싱
     logger.info("=== STEP 1: PDF 파싱 ===")
@@ -73,7 +73,7 @@ def run_embed(pdf_path: str):
     파싱 + 청킹 + 임베딩 + Qdrant 저장 전체 파이프라인 실행.
     chunker._embeddings를 embedder와 공유하여 bge-m3를 한 번만 로드한다.
     """
-    from embedder import VehicleEmbedder  # Qdrant 임베딩 및 저장 클래스
+    from services.embedder import VehicleEmbedder  # Qdrant 임베딩 및 저장 클래스
 
     # STEP 1~2: 파싱 + 청킹
     chunks, chunker = run_chunk(pdf_path)
@@ -97,7 +97,7 @@ def run_embed(pdf_path: str):
             print(f"  page={doc.metadata.get('page_num')} | {doc.page_content[:60]!r}")
 
 
-def main():x
+def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("pdf_path", help="PDF 파일 경로")
     parser.add_argument(
