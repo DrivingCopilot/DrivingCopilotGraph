@@ -1,16 +1,16 @@
 """
-app/services/index_manuals.py
+services/index_manuals.py
 
 차량 매뉴얼 PDF를 파싱 → 청킹 → 임베딩 → Qdrant 저장하는 1회성 인덱싱 스크립트.
 SemanticChunker에서 로드한 bge-m3 모델을 VehicleEmbedder와 공유하여
 모델을 한 번만 로드한다.
 
-Usage:
+Usage (리포지토리 루트에서 실행):
     # 청크 결과만 확인 (Qdrant 불필요)
-    python index_manuals.py ../../manuals/매뉴얼.pdf --step chunk
+    python -m services.index_manuals manuals/매뉴얼.pdf --step chunk
 
     # 전체 파이프라인 (파싱 + 청킹 + 임베딩 + Qdrant 저장)
-    python index_manuals.py ../../manuals/매뉴얼.pdf --step embed
+    python -m services.index_manuals manuals/매뉴얼.pdf --step embed
 """
 
 import argparse  # 커맨드라인 인자 파싱용

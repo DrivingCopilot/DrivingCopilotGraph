@@ -1,5 +1,5 @@
 """
-app/services/semantic_chunker.py
+services/semantic_chunker.py
 
 LangChain SemanticChunker를 사용해 Document 리스트를 청크로 분할한다.
 

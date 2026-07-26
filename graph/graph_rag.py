@@ -12,7 +12,8 @@ from neo4j_graphrag.experimental.components.types import (
     TextChunks,
     DocumentInfo,
 )
-from neo4j_graphrag.llm import OllamaLLM
+from neo4j_graphrag.exceptions import LLMGenerationError
+from neo4j_graphrag.llm import LLMBase, LLMResponse
 from pydantic import BaseModel, Field
 
 from core import config
@@ -21,22 +22,107 @@ from graph.schema import DrivingGraphSchema
 logger = logging.getLogger(__name__)
 
 
-# --- 1. Local LLM (Ollama / Qwen3-VL) --------------------------------------
-def build_local_llm() -> OllamaLLM:
+# --- 1. Local LLM (HuggingFace / Qwen3-VL) ----------------------------------
+class LocalQwen3VL(LLMBase):
     """
-    로컬 Ollama 서버(qwen3-vl:4b)에 연결된 LLM 인스턴스를 생성한다.
+    HuggingFace 에서 내려받은 로컬 Qwen3-VL 가중치를 transformers 로 직접 로드해 추론한다.
 
-    neo4j_graphrag.llm.OllamaLLM 은 LLMInterface 를 구현하므로
+    neo4j_graphrag.llm.LLMBase 를 구현하므로
     - LLMEntityRelationExtractor(llm=...) 에 그대로 주입 가능하고
     - invoke/ainvoke → LLMResponse(.content) 형태로 응답한다.
 
-    사전 준비: scripts/02_setup_llm.sh 로 Ollama 서버 + 모델 pull 완료 필요.
+    Graph RAG 추출/융합은 이미지가 아닌 텍스트만 다루므로 비전 입력 없이
+    텍스트 전용 채팅 템플릿으로 호출한다.
+
+    사전 준비: scripts/02_setup_llm.sh 로 모델 가중치 다운로드 완료 필요.
     """
-    return OllamaLLM(
+
+    def __init__(
+        self,
+        model_name: str,
+        model_params: Optional[dict] = None,
+        device: str = "cuda",
+        max_new_tokens: int = 1024,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(model_name=model_name, model_params=model_params)
+
+        from transformers import AutoProcessor, Qwen3VLForConditionalGeneration
+
+        self.temperature = (self.model_params.get("options") or {}).get(
+            "temperature", 0.0
+        )
+        self.max_new_tokens = max_new_tokens
+        self.model = Qwen3VLForConditionalGeneration.from_pretrained(
+            model_name, dtype="auto", device_map=device
+        )
+        self.processor = AutoProcessor.from_pretrained(model_name)
+
+    def _generate(self, prompt: str, system_instruction: Optional[str] = None) -> str:
+        messages = []
+        if system_instruction:
+            messages.append({"role": "system", "content": system_instruction})
+        messages.append({"role": "user", "content": prompt})
+
+        inputs = self.processor.apply_chat_template(
+            messages,
+            tokenize=True,
+            add_generation_prompt=True,
+            return_dict=True,
+            return_tensors="pt",
+        ).to(self.model.device)
+
+        generated_ids = self.model.generate(
+            **inputs,
+            max_new_tokens=self.max_new_tokens,
+            do_sample=self.temperature > 0,
+            temperature=self.temperature if self.temperature > 0 else None,
+        )
+        trimmed_ids = [
+            out_ids[len(in_ids):]
+            for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
+        ]
+        output = self.processor.batch_decode(
+            trimmed_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False
+        )
+        return output[0] if output else ""
+
+    def invoke(
+        self,
+        input: str,
+        message_history=None,
+        system_instruction: Optional[str] = None,
+        **kwargs: Any,
+    ) -> LLMResponse:
+        if not isinstance(input, str):
+            raise NotImplementedError("LocalQwen3VL only supports text(str) input")
+        try:
+            return LLMResponse(content=self._generate(input, system_instruction))
+        except Exception as e:
+            raise LLMGenerationError(e)
+
+    async def ainvoke(
+        self,
+        input: str,
+        message_history=None,
+        system_instruction: Optional[str] = None,
+        **kwargs: Any,
+    ) -> LLMResponse:
+        # transformers.generate 는 동기/블로킹이므로 스레드로 오프로딩해 이벤트 루프를 막지 않는다.
+        return await asyncio.to_thread(self.invoke, input, message_history, system_instruction)
+
+
+def build_local_llm() -> LocalQwen3VL:
+    """
+    HuggingFace 에서 내려받은 로컬 Qwen3-VL(Instruct) 가중치로 LLM 인스턴스를 생성한다.
+
+    사전 준비: scripts/02_setup_llm.sh 로 모델 가중치 다운로드 완료 필요.
+    """
+    return LocalQwen3VL(
         model_name=config.GRAPH_LLM_MODEL,
-        # options 키로 감싸야 ollama chat(options=...) 로 전달된다(래퍼 규약).
         model_params={"options": {"temperature": config.GRAPH_LLM_TEMPERATURE}},
-        host=config.OLLAMA_HOST,
+        device=config.GRAPH_LLM_DEVICE,
+        max_new_tokens=config.GRAPH_LLM_MAX_NEW_TOKENS,
     )
 
 
@@ -79,7 +165,7 @@ class VehicleGraphManager:
         # node/relationship/pattern 은 run() 시점에 전달한다.
         self.schema_builder = SchemaBuilder()
 
-        # 로컬 Ollama LLM (Qwen3-VL) — 추출/융합에서 공유
+        # 로컬 HuggingFace LLM (Qwen3-VL) — 추출/융합에서 공유
         self.llm = build_local_llm()
 
         # LLM Extractor — 기본 ERExtractionTemplate 사용(JSON 출력 포맷 지시 포함).

@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 # 03_ingest.sh
 # -----------------------------------------------------------------------------
-# 로컬 LLM(Ollama / Qwen3-VL-4B-Instruct)을 사용해 차량 매뉴얼(PDF)·진단 텍스트(.txt)에서
-# 엔티티/관계를 추출하고 Neo4j 지식 그래프에 적재한다. (graph/ingest.py 엔트리포인트)
+# 로컬 LLM(HuggingFace transformers / Qwen3-VL-4B-Instruct)을 사용해 차량 매뉴얼(PDF)·
+# 진단 텍스트(.txt)에서 엔티티/관계를 추출하고 Neo4j 지식 그래프에 적재한다.
+# (graph/ingest.py 엔트리포인트)
 #
 # PDF 는 Vector(Qdrant) 파이프라인과 동일한 VehiclePDFParser + SemanticChunker 로
 # 청킹되어, 벡터/그래프가 같은 원본 청크를 공유한다.
 #
 # 전제:
 #   - ./scripts/01_start_neo4j.sh 로 Neo4j 가 기동되어 있을 것
-#   - ./scripts/02_setup_llm.sh 로 .venv / Ollama 서버 / qwen3-vl:4b-instruct 준비될 것
+#   - ./scripts/02_setup_llm.sh 로 .venv / transformers / Qwen3-VL-4B-Instruct 가중치 준비될 것
 #   - PDF 입력 시: 벡터 청킹 스택(pymupdf, langchain-*, sentence-transformers) 설치 필요
 #                 (.txt 입력은 추가 의존성 없이 동작)
 #
@@ -58,7 +59,6 @@ fi
 
 # --- 적재 실행 -------------------------------------------------------------
 # graph.ingest 는 VehicleGraphManager.extracting_data 를 호출해 추출→적재하는 엔트리포인트.
-# (엔트리포인트/바인딩 미구현 시 아래 실행에서 명확한 에러로 안내된다.)
 echo "▶ LLM 기반 적재 시작: $INPUT"
 python -m graph.ingest "$INPUT"
 

@@ -13,7 +13,9 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 class VectorRAG:
     def __init__(self, model_name: str = "MiniLM"):
         """
-        초기화 메서드. 추후 bge-m3 등 다른 임베딩 모델로 쉽게 교체할 수 있도록 설계
+        초기화 메서드.
+        NOTE: model_name 은 로깅 표시용 라벨일 뿐이다. 실제 임베딩은 SemanticChunker/
+              VehicleEmbedder 의 기본 모델(bge-m3)로 고정되어 있으며 이 값으로 바뀌지 않는다.
         """
         self.model_name = model_name
         logging.info(f"VectorRAG 초기화(Embedding Model: {self.model_name})")
@@ -77,11 +79,11 @@ def main():
         default="embed",
         help="실행 단계 선택 (기본: embed)",
     )
-    # 모델 선택 인자 추가 (확장성 고려)
+    # 로깅 표시용 라벨(확장성 대비). 실제 임베딩 모델은 bge-m3 로 고정이며 이 값은 영향 없음.
     parser.add_argument(
         "--model",
         default="MiniLM",
-        help="사용할 임베딩 모델 (기본: MiniLM)",
+        help="로깅 표시용 라벨 (기본: MiniLM). 실제 임베딩은 bge-m3 고정",
     )
     args = parser.parse_args()
 

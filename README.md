@@ -19,7 +19,7 @@ Graph RAG는 차량 진단 지식을 Neo4j 지식 그래프로 관리합니다. 
 
 - **Docker / Docker Compose** — Neo4j 컨테이너 기동용
 - **Python 3.10+** — 적재 파이프라인 및 LLM 실행용 (`scripts/02_setup_llm.sh`에서 venv 생성)
-- **(적재 시) CUDA GPU 환경** — 로컬 LLM(`Qwen2-VL-7B-Instruct-AWQ`) 추론용. 서버 기동/테스트에는 불필요합니다.
+- **(적재 시) CUDA GPU 환경** — 로컬 LLM(`Qwen3-VL-4B-Instruct`) 추론용. 서버 기동/테스트에는 불필요합니다.
 
 ### 설정 파일
 
@@ -46,8 +46,8 @@ Graph RAG는 차량 진단 지식을 Neo4j 지식 그래프로 관리합니다. 
 
 # 3) (선택) 로컬 LLM 환경 구성 — GPU 환경에서만
 ./scripts/02_setup_llm.sh
-#    - .venv 생성 + 의존성 설치 + Qwen2-VL-7B-Instruct-AWQ 다운로드
-#    - 모델 변경: LLM_MODEL=<HF_ID> ./scripts/02_setup_llm.sh
+#    - .venv 생성 + 의존성 설치 + Qwen3-VL-4B-Instruct 다운로드(HuggingFace)
+#    - 모델 변경: GRAPH_LLM_MODEL=<HF repo id> ./scripts/02_setup_llm.sh
 
 # 4) LLM 기반 적재 — 텍스트에서 엔티티/관계 추출 후 그래프 적재
 ./scripts/03_ingest.sh <입력파일_또는_디렉터리>
@@ -64,9 +64,10 @@ Graph RAG는 차량 진단 지식을 Neo4j 지식 그래프로 관리합니다. 
 
 서버 중지는 `docker compose down`이며, 그래프 데이터는 볼륨에 보존됩니다.
 
-> **참고:** `03_ingest.sh`가 호출하는 `graph/ingest.py` 엔트리포인트와
-> `graph/graph_rag.py`의 `LocalQwen2VL` 추론 바인딩은 실제 적재를 위해 별도 구현이 필요합니다.
-> 미구현 상태에서 실행하면 명확한 에러로 안내됩니다.
+> **참고:** `03_ingest.sh`는 `graph/ingest.py` 엔트리포인트를 통해
+> `graph/graph_rag.py`의 `LocalQwen3VL`(HuggingFace `transformers` 기반) 로
+> 엔티티/관계를 추출한 뒤 Neo4j 에 적재합니다. GPU 미보유 환경에서는
+> `scripts/02_setup_llm.sh` 단계를 건너뛰고 `run_cypher_test.sh` 로만 검증하세요.
 
 ## 추가 예정 사항
 

@@ -31,6 +31,7 @@ from core.config import (
     MODEL_NAME,
     VECTOR_SIZE,
     QDRANT_PATH,
+    QDRANT_URL,
     COLLECTION_NAME,
 )
 
@@ -232,7 +233,10 @@ class VehicleEmbedder:
             model_kwargs={"device": "cpu"},
             encode_kwargs={"normalize_embeddings": True},
         )
-        self._client = QdrantClient(path=QDRANT_PATH)
+        # Backend 와 동일한 모드 선택: QDRANT_PATH 설정 시 파일 모드, 비어 있으면 서버 모드.
+        self._client = (
+            QdrantClient(path=QDRANT_PATH) if QDRANT_PATH else QdrantClient(url=QDRANT_URL)
+        )
         self._ensure_collection()
         self._vectorstore = QdrantVectorStore(
             client=self._client,
