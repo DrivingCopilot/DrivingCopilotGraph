@@ -255,23 +255,41 @@ class VehicleGraphManager:
         if not entities:
             return "No entities provided for graph traversal."
 
-        # 추출된 엔티티들의 이름(ID) 목록 추출 (대소문자 무관 탐색을 위해 소문자화)
+        # 추출된 엔티티들의 식별자 목록 추출 (대소문자 무관 탐색을 위해 소문자화).
+        # 노드 종류마다 식별 속성이 다르다(Component=name, DTC Code=code, Symptom=description,
+        # System=name 등). name 만 보면 Symptom/DTC 를 놓치므로 code/type/description 도 함께 본다.
         entity_names = []
         for entity in entities:
-            name = entity.get("properties", {}).get("name", entity.get("id", ""))
+            props = entity.get("properties", {}) or {}
+            name = (
+                props.get("name")
+                or props.get("code")
+                or props.get("type")
+                or props.get("description")
+                or entity.get("id", "")
+            )
             if name:
                 entity_names.append(str(name).lower())
 
         if not entity_names:
             return "Could not identify valid entity names for traversal."
 
-        # 1~2 hop 탐색 Cypher 쿼리 (가변 경로 탐색)
+        # 1~2 hop 탐색 Cypher 쿼리 (가변 경로 탐색).
+        # 노드별 식별 속성 차이를 고려해 name/id/code/type/description 을 모두 매칭 대상으로 삼는다
+        # (toLower(null)=null 이라 존재하지 않는 속성은 자연히 매칭에서 제외된다).
+        # 출력 이름도 coalesce 로 노드 종류에 맞는 식별값을 표시한다.
         cypher_query = """
         MATCH p = (n)-[*1..2]-(m)
-        WHERE toLower(n.name) IN $entity_names OR toLower(n.id) IN $entity_names
-        RETURN n.name AS source_name, labels(n) AS source_labels,
+        WHERE toLower(n.name) IN $entity_names
+           OR toLower(n.id) IN $entity_names
+           OR toLower(n.code) IN $entity_names
+           OR toLower(n.type) IN $entity_names
+           OR toLower(n.description) IN $entity_names
+        RETURN coalesce(n.name, n.code, n.type, n.description, n.id) AS source_name,
+               labels(n) AS source_labels,
                [rel IN relationships(p) | type(rel)] AS rel_types,
-               m.name AS target_name, labels(m) AS target_labels
+               coalesce(m.name, m.code, m.type, m.description, m.id) AS target_name,
+               labels(m) AS target_labels
         LIMIT $limit
         """
 

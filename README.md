@@ -69,6 +69,30 @@ Graph RAG는 차량 진단 지식을 Neo4j 지식 그래프로 관리합니다. 
 > 엔티티/관계를 추출한 뒤 Neo4j 에 적재합니다. GPU 미보유 환경에서는
 > `scripts/02_setup_llm.sh` 단계를 건너뛰고 `run_cypher_test.sh` 로만 검증하세요.
 
+### Qdrant 의존성 (Vector 인덱싱)
+
+벡터 인덱싱(`services/index_manuals.py`, `graph/vector_rag.py`, `VehicleEmbedder`)은
+`core/config.py`의 `QDRANT_PATH` 값으로 접속 모드를 정합니다.
+
+| `QDRANT_PATH` | 모드 | 접속 대상 |
+|---|---|---|
+| 비어 있음(기본) | **서버 모드** | `QDRANT_URL` (기본 `http://localhost:6333`) |
+| 경로 지정 | 로컬 파일 모드 | 해당 디렉터리 (별도 서버 불필요) |
+
+> **중요:** 서버 모드가 접속하는 Qdrant 서버(`6333`)는 **`DrivingCopilotBackend` 레포의
+> `docker-compose.yml`이 호스팅**하며 **이 레포에는 포함되어 있지 않습니다**(이 레포의
+> `docker-compose.yml`은 Neo4j 전용). 따라서 기본값 그대로 벡터 인덱싱을 실행하려면
+> Backend 의 Qdrant 컨테이너가 먼저 떠 있어야 합니다.
+>
+> Backend 없이 이 레포만 단독으로 벡터 인덱싱을 시험하려면 로컬 파일 모드로 지정하세요:
+>
+> ```bash
+> QDRANT_PATH=./qdrant_storage python -m services.index_manuals manuals/매뉴얼.pdf --step embed
+> ```
+>
+> `COLLECTION_NAME`/`QDRANT_URL` 기본값(`vehicle_manuals` / `localhost:6333`)은 Backend
+> `app/config.py`와 동일하게 맞춰져 있어, 서버 모드에서 같은 컬렉션을 공유합니다.
+
 ## 추가 예정 사항
 
 **Knowledge Agent MCP Tools**: Knowledge Agent를 위한 포괄적인 MCP(Model Context Protocol) 도구들을 관리하고 보관할 전용 폴더가 향후 생성될 예정입니다.
