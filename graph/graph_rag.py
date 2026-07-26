@@ -41,13 +41,20 @@ class LocalQwen3VL(LLMBase):
         self,
         model_name: str,
         model_params: Optional[dict] = None,
-        device: str = "cuda",
+        device: str = "auto",
         max_new_tokens: int = 1024,
         **kwargs: Any,
     ) -> None:
         super().__init__(model_name=model_name, model_params=model_params)
 
+        import torch
         from transformers import AutoProcessor, Qwen3VLForConditionalGeneration
+
+        # device="auto" 는 GPU 가 있으면 cuda, 없으면 cpu 로 해석한다(비-GPU 환경/CI 에서도
+        # 임포트·로딩이 죽지 않도록). "cuda"/"cpu" 등 명시값은 그대로 device_map 에 전달한다.
+        if device == "auto":
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.device = device
 
         self.temperature = (self.model_params.get("options") or {}).get(
             "temperature", 0.0

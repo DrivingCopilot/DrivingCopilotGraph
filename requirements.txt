@@ -1,3 +1,6 @@
+# 참고: 적재/인덱싱 "런타임 파이프라인"의 실제 의존성은 requirements-docker.txt 가 단일 소스다.
+#       (scripts/02_setup_llm.sh 와 Docker 이미지가 그 파일을 사용)
+#       이 파일은 전체 프로젝트(서버/평가 등 예정 포함)의 폭넓은 목록으로 유지한다.
 langchain>=0.1.0
 langgraph           # ReAct 및 StateGraph 구현의 핵심
 pydantic>=2.0       # A2A 프로토콜 스케마 정의

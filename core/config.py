@@ -69,6 +69,8 @@ GRAPH_MAX_RESULTS = int(os.getenv("GRAPH_MAX_RESULTS", "20"))  # 그래프 탐�
 # scripts/02_setup_llm.sh 로 HuggingFace Hub 에서 가중치를 사전 다운로드한다.
 # 적재(엔티티/관계 추출)는 텍스트만 다루므로 가벼운 4B Instruct 로 충분하다.
 GRAPH_LLM_MODEL = os.getenv("GRAPH_LLM_MODEL", "Qwen/Qwen3-VL-4B-Instruct")
-GRAPH_LLM_DEVICE = os.getenv("GRAPH_LLM_DEVICE", "cuda")  # transformers device_map
+# "auto" = GPU 있으면 cuda, 없으면 cpu 로 자동 선택(비-GPU 환경/CI 에서도 로딩이 죽지 않음).
+# "cuda"/"cpu" 등 명시값은 그대로 transformers device_map 으로 전달된다.
+GRAPH_LLM_DEVICE = os.getenv("GRAPH_LLM_DEVICE", "auto")  # transformers device_map
 GRAPH_LLM_MAX_NEW_TOKENS = int(os.getenv("GRAPH_LLM_MAX_NEW_TOKENS", "1024"))
 GRAPH_LLM_TEMPERATURE = float(os.getenv("GRAPH_LLM_TEMPERATURE", "0.0"))  # 추출은 결정적으로

@@ -46,8 +46,9 @@ Graph RAG는 차량 진단 지식을 Neo4j 지식 그래프로 관리합니다. 
 
 # 3) (선택) 로컬 LLM 환경 구성 — GPU 환경에서만
 ./scripts/02_setup_llm.sh
-#    - .venv 생성 + 의존성 설치 + Qwen3-VL-4B-Instruct 다운로드(HuggingFace)
+#    - .venv 생성 + requirements-docker.txt 로 의존성 설치 + Qwen3-VL-4B-Instruct 다운로드
 #    - 모델 변경: GRAPH_LLM_MODEL=<HF repo id> ./scripts/02_setup_llm.sh
+#    - 캐시 위치 변경: HF_HOME=/data/hf ./scripts/02_setup_llm.sh  (Docker 볼륨 마운트 지점)
 
 # 4) LLM 기반 적재 — 텍스트에서 엔티티/관계 추출 후 그래프 적재
 ./scripts/03_ingest.sh <입력파일_또는_디렉터리>

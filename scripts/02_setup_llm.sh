@@ -12,12 +12,15 @@
 #       가벼운 4B Instruct 로 충분하다(비전 인코더는 로드되지만 사용하지 않음).
 #
 # 수행 내용:
-#   1) Python 가상환경(.venv) 생성 + transformers/torch 등 추론 의존성 설치
+#   1) Python 가상환경(.venv) 생성 + requirements-docker.txt 로 파이프라인 의존성 설치
+#      (Docker 이미지와 동일한 목록 → venv/컨테이너 환경 일치)
 #   2) HuggingFace Hub 에서 GRAPH_LLM_MODEL 가중치 사전 다운로드(캐시)
 #
 # 환경 변수(선택):
 #   GRAPH_LLM_MODEL   내려받을 HuggingFace repo id (기본 Qwen/Qwen3-VL-4B-Instruct)
 #   VENV_DIR          가상환경 경로              (기본 .venv)
+#   HF_HOME           HuggingFace 캐시 루트(가중치 저장 위치). Docker 에서는 이 경로를
+#                     볼륨으로 마운트해 이미지에 가중치를 굽지 않는다. 기본 ~/.cache/huggingface
 #   HF_TOKEN          비공개/게이트 모델 접근용 HuggingFace 토큰(선택)
 #   SKIP_MODEL_DOWNLOAD=1  가중치 다운로드 생략(의존성만 구성)
 #
@@ -53,22 +56,15 @@ fi
 # shellcheck disable=SC1091
 source "$VENV_DIR/bin/activate"
 python -m pip install --upgrade pip wheel setuptools >/dev/null
-# Graph RAG 파이프라인 의존성:
-#   - neo4j-graphrag  : SchemaBuilder / LLMEntityRelationExtractor / Neo4jWriter
-#   - transformers    : Qwen3VLForConditionalGeneration 로더 (Qwen3-VL 지원은 4.57+ 부터)
-#   - accelerate      : device_map="cuda" 로 GPU 배치
-#   - huggingface_hub : 가중치 사전 다운로드(snapshot_download)
-python -m pip install \
-  "neo4j-graphrag>=1.18" \
-  "transformers>=4.57" \
-  "accelerate>=0.33" \
-  "huggingface_hub>=0.25"
+# 파이프라인 의존성은 requirements-docker.txt 단일 소스에서 설치한다(그래프+벡터 전체 스택).
+# Docker 이미지와 동일한 목록을 써서 venv/컨테이너 환경이 어긋나지 않도록 한다.
+python -m pip install -r requirements-docker.txt
 
 # --- 2. HuggingFace 가중치 사전 다운로드 -----------------------------------
 if [[ "${SKIP_MODEL_DOWNLOAD:-0}" == "1" ]]; then
   echo "[2/2] SKIP_MODEL_DOWNLOAD=1 → 가중치 다운로드 생략"
 else
-  echo "[2/2] HuggingFace 가중치 다운로드: $GRAPH_LLM_MODEL"
+  echo "[2/2] HuggingFace 가중치 다운로드: $GRAPH_LLM_MODEL (캐시: ${HF_HOME:-$HOME/.cache/huggingface})"
   python - "$GRAPH_LLM_MODEL" <<'PYEOF'
 import sys
 from huggingface_hub import snapshot_download
@@ -84,6 +80,7 @@ cat <<EOF
 로컬 LLM 환경 구성 완료
    - venv     : $VENV_DIR   (활성화: source $VENV_DIR/bin/activate)
    - model    : $GRAPH_LLM_MODEL (HuggingFace 캐시에서 자동 로드)
+   - HF 캐시  : ${HF_HOME:-$HOME/.cache/huggingface}   (Docker 는 이 경로를 볼륨 마운트)
 
 빠른 확인:
    source $VENV_DIR/bin/activate
