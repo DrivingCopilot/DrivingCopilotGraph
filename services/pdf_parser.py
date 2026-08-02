@@ -1,5 +1,5 @@
 """
-app/services/pdf_parser.py
+services/pdf_parser.py
 
 차량 매뉴얼 PDF를 LangChain Document 리스트로 변환한다.
 

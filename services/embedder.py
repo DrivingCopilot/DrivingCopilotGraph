@@ -1,11 +1,11 @@
 """
-app/services/embedder.py
+services/embedder.py
 
 LangChain Qdrant 벡터스토어에 Document를 임베딩하고 저장한다.
 1회성 인덱싱 파이프라인의 마지막 단계.
 
 vLLM 교체 시 HuggingFaceEmbeddings → vLLM 임베딩으로 교체.
-A6000 서버 통합 시 qdrant_path → qdrant_url로 전환.
+Qdrant 접속은 QDRANT_PATH 설정 시 로컬 파일 모드, 비어 있으면 QDRANT_URL 서버 모드로 자동 분기한다.
 """
 
 from __future__ import annotations  # Python 3.9 이하에서도 타입 힌트가 동작하도록 함
@@ -14,6 +14,7 @@ from core.config import (  # 전역 설정 상수 import
     MODEL_NAME,
     VECTOR_SIZE,
     QDRANT_PATH,
+    QDRANT_URL,
     COLLECTION_NAME,
 )
 
@@ -51,10 +52,11 @@ class VehicleEmbedder:
             encode_kwargs={"normalize_embeddings": True}, # 코사인 유사도 계산을 위한 벡터 정규화
         )
 
-        # Qdrant 클라이언트 초기화 (로컬 파일 모드)
-        # path 인자를 사용하면 Docker 없이 로컬 파일로 저장됨
-        # A6000 서버 통합 시: QdrantClient(url="http://서버주소:6333")으로 교체
-        self._client = QdrantClient(path=QDRANT_PATH)
+        # Qdrant 클라이언트 초기화 — Backend(app/config.py)와 동일한 모드 선택.
+        # QDRANT_PATH 설정 시 로컬 파일 모드, 비어 있으면 QDRANT_URL 서버 모드(Backend 6333).
+        self._client = (
+            QdrantClient(path=QDRANT_PATH) if QDRANT_PATH else QdrantClient(url=QDRANT_URL)
+        )
 
         # 컬렉션이 없으면 자동 생성
         self._ensure_collection()

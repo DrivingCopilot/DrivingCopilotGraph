@@ -1,0 +1,36 @@
+# requirements-docker.txt
+# -----------------------------------------------------------------------------
+# DrivingCopilotGraph 적재/인덱싱 파이프라인의 런타임 의존성 단일 소스.
+#
+# 기존 두 소스를 하나로 통합했다:
+#   - requirements.txt        (벡터/청킹 스택 핀)
+#   - scripts/02_setup_llm.sh (그래프/HuggingFace 스택)
+# 이 레포에서 실제로 import 하지 않는 패키지(openai / ragas / mcp / fastapi /
+# uvicorn / websockets / langgraph 등)는 제외해 이미지 크기를 줄였다.
+#
+# torch(+CUDA)는 베이스 이미지(예: pytorch/pytorch:*-cuda*-runtime)가 제공하므로
+# 여기서 명시 설치하지 않는다. transformers / sentence-transformers 의 전이 의존으로
+# 자동 설치되며(리눅스 기본 휠은 CUDA 포함), CPU 전용/토치 없는 베이스에서 고정하려면
+# 아래 줄의 주석을 해제한다.
+# torch>=2.2
+
+# --- 그래프 추출 (LLM / Neo4j) ---
+neo4j-graphrag>=1.18       # SchemaBuilder / LLMEntityRelationExtractor / Neo4jWriter
+neo4j>=5.26                # Neo4j 파이썬 드라이버 (async/sync)
+tenacity>=8.2              # extracting_data 재시도(지수 백오프)
+pydantic>=2.0             # 스키마 / MCP 툴 IO 모델
+
+# --- 로컬 LLM (HuggingFace / Qwen3-VL) ---
+transformers>=4.57         # Qwen3VLForConditionalGeneration (Qwen3-VL 지원 4.57+)
+accelerate>=0.33           # device_map 으로 GPU/CPU 배치
+huggingface_hub>=0.25      # 가중치 사전 다운로드(snapshot_download)
+
+# --- 벡터 인덱싱 / 청킹 (Qdrant / bge-m3) ---
+PyMuPDF==1.27.2.3              # fitz: PDF 파싱
+langchain-community==0.4.1    # PyMuPDFLoader
+langchain-core==1.3.2         # Document
+langchain-experimental==0.4.1 # SemanticChunker
+langchain-huggingface==1.2.2  # HuggingFaceEmbeddings(bge-m3)
+langchain-qdrant==1.1.0       # QdrantVectorStore
+qdrant-client==1.17.1
+sentence-transformers>=2.7    # bge-m3 임베딩 백엔드
