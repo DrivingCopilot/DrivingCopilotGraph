@@ -279,7 +279,8 @@ def main() -> None:
         "--concurrency",
         type=int,
         default=1,
-        help="동시에 처리할 청크 수(LLM 추출 병렬, 쓰기는 직렬). 8GB VRAM 은 2~3 권장",
+        help="동시에 처리할 청크 수(LLM 추출 병렬, 쓰기는 직렬)."
+        " 타겟 환경(A6000 48GB)은 8~16, 8GB급 GPU는 2~3 권장",
     )
     args = parser.parse_args()
 

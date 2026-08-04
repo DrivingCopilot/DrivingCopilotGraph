@@ -64,6 +64,23 @@ Graph RAG는 차량 진단 지식을 Neo4j 지식 그래프로 관리합니다. 
 
 서버 중지는 `docker compose down`이며, 그래프 데이터는 볼륨에 보존됩니다.
 
+### Docker로 적재하기 (대안)
+
+네이티브 venv(`02_setup_llm.sh`) 대신, 적재 스크립트를 Docker 이미지로 실행할 수 있습니다.
+LLM 추출은 이 이미지 안이 아니라 호스트에 네이티브로 띄운 Ollama가 담당하므로, `01_start_neo4j.sh`와
+`02_setup_llm.sh`(Ollama 서버 기동까지만, venv/모델 다운로드 부분은 생략 가능)는 그대로 필요합니다.
+
+```bash
+# 적재할 파일을 ./manuals/ 에 두고
+docker compose run --rm ingest /data/manual.pdf
+docker compose run --rm ingest /data/manuals/   # 디렉터리 전체
+```
+
+`ingest` 서비스는 `profiles: ["tools"]`로 지정돼 있어 기본 `docker compose up`에는 뜨지
+않고, 위처럼 `run`으로 필요할 때만 실행됩니다. Neo4j는 서비스명(`neo4j:7687`)으로,
+Ollama는 `host.docker.internal:11434`로 접속합니다 — 다른 호스트에 Ollama를 두면
+`.env`의 `OLLAMA_HOST`만 바꾸면 됩니다.
+
 > **참고:** `03_ingest.sh`가 호출하는 `graph/ingest.py` 엔트리포인트와
 > `graph/graph_rag.py`의 `LocalQwen2VL` 추론 바인딩은 실제 적재를 위해 별도 구현이 필요합니다.
 > 미구현 상태에서 실행하면 명확한 에러로 안내됩니다.

@@ -1,0 +1,26 @@
+# git / IDE
+.git/
+.gitignore
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+ENV/
+.pytest_cache/
+.ruff_cache/
+
+# Neo4j 데이터/로그 (컨테이너 볼륨) — 이미지에 불필요
+neo4j/
+qdrant_storage/
+**/.lock
+
+# 테스트/노트북 — 런타임 이미지에 불필요
+test_few_shots.py
+*.md
+
+# 로컬 전용 설정
+.env
